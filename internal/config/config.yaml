@@ -13,11 +13,13 @@ server:
 
 database:
   host: "localhost"
-  port: 5432
-  username: "postgres"
-  password: "your_password"
-  database: "kswi_db"
-  ssl_mode: "disable"
+  port: 3306
+  username: "root"
+  password: ""
+  database: "golang"
+  charset: "utf8mb4"
+  parse_time: true
+  loc: "UTC"
   max_open_conns: 25
   max_idle_conns: 5
   conn_max_lifetime: 300
@@ -38,6 +40,6 @@ jwt:
   issuer: "kswi-backend"
 
 log:
-  level: "info"      # debug, info, warn, error
+  level: "info"      # debug, info, warn, error, panic, fatal
   format: "json"     # json, text
   output: "stdout"   # stdout, stderr, file

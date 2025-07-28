@@ -3,7 +3,6 @@ package config
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -24,7 +23,7 @@ var rdb *redis.Client
 
 // InitRedis initializes the Redis connection
 func InitRedis() error {
-	log.Println("🔄 Initializing Redis connection...")
+	GetSugaredLogger().Info("🔄 Initializing Redis connection...")
 
 	// Get Redis configuration
 	redisConfig := cfg.Redis
@@ -47,17 +46,18 @@ func InitRedis() error {
 	defer cancel()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
+		GetSugaredLogger().Errorf("Failed to connect to redis: %v", err)
 		return fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
-	log.Printf("✅ Redis connected successfully to %s:%d", redisConfig.Host, redisConfig.Port)
+	GetSugaredLogger().Infof("✅ Redis connected successfully to %s:%d", redisConfig.Host, redisConfig.Port)
 	return nil
 }
 
 // GetRedis returns the Redis client
 func GetRedis() *redis.Client {
 	if rdb == nil {
-		log.Fatal("Redis not initialized. Call InitRedis() first")
+		GetSugaredLogger().Fatal("Redis not initialized. Call InitRedis() first")
 	}
 	return rdb
 }
@@ -71,9 +71,10 @@ func GetRedisAddress() string {
 func CloseRedis() error {
 	if rdb != nil {
 		if err := rdb.Close(); err != nil {
+			GetSugaredLogger().Errorf("Failed to close redis: %v", err)
 			return fmt.Errorf("failed to close redis: %w", err)
 		}
-		log.Println("✅ Redis connection closed")
+		GetSugaredLogger().Info("✅ Redis connection closed")
 	}
 	return nil
 }
