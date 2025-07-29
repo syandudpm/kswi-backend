@@ -6,7 +6,7 @@ app:
 
 server:
   host: "localhost"
-  port: 8080
+  port: 3000
   read_timeout: 30
   write_timeout: 30
   idle_timeout: 60
@@ -22,7 +22,7 @@ database:
   loc: "UTC"
   max_open_conns: 25
   max_idle_conns: 5
-  conn_max_lifetime: 300
+  conn_max_lifetime: "5m"  # Changed to duration string format
 
 redis:
   host: "localhost"

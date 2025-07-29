@@ -22,7 +22,7 @@ type DatabaseConfig struct {
 	Loc             string `mapstructure:"loc"`
 	MaxOpenConns    int    `mapstructure:"max_open_conns"`
 	MaxIdleConns    int    `mapstructure:"max_idle_conns"`
-	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"`
+	ConnMaxLifetime string `mapstructure:"conn_max_lifetime"` // Changed to string for duration parsing
 }
 
 var db *gorm.DB
@@ -33,6 +33,15 @@ func InitDatabase() error {
 
 	// Get database configuration
 	dbConfig := cfg.Database
+
+	// Validate required fields
+	if dbConfig.MaxOpenConns <= 0 {
+		return fmt.Errorf("invalid MaxOpenConns value: %d", dbConfig.MaxOpenConns)
+	}
+
+	if dbConfig.MaxIdleConns < 0 {
+		return fmt.Errorf("invalid MaxIdleConns value: %d", dbConfig.MaxIdleConns)
+	}
 
 	// Create MySQL DSN
 	dsn := fmt.Sprintf(
@@ -78,7 +87,14 @@ func InitDatabase() error {
 	// Configure connection pool
 	sqlDB.SetMaxOpenConns(dbConfig.MaxOpenConns)
 	sqlDB.SetMaxIdleConns(dbConfig.MaxIdleConns)
-	sqlDB.SetConnMaxLifetime(time.Duration(dbConfig.ConnMaxLifetime) * time.Second)
+
+	// Parse connection max lifetime
+	connMaxLifetime, err := time.ParseDuration(dbConfig.ConnMaxLifetime)
+	if err != nil {
+		GetSugaredLogger().Warnf("Invalid conn_max_lifetime format '%s', using default 5m", dbConfig.ConnMaxLifetime)
+		connMaxLifetime = 5 * time.Minute // default value
+	}
+	sqlDB.SetConnMaxLifetime(connMaxLifetime)
 
 	// Test connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -89,7 +105,8 @@ func InitDatabase() error {
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	GetSugaredLogger().Infof("✅ Database connected successfully to %s:%d", dbConfig.Host, dbConfig.Port)
+	GetSugaredLogger().Infof("✅ Database connected successfully to %s:%d/%s",
+		dbConfig.Host, dbConfig.Port, dbConfig.Database)
 	return nil
 }
 
@@ -99,6 +116,20 @@ func GetDB() *gorm.DB {
 		GetSugaredLogger().Fatal("Database not initialized. Call InitDatabase() first")
 	}
 	return db
+}
+
+// HealthCheck verifies the database connection
+func HealthCheck(ctx context.Context) error {
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get sql.DB: %w", err)
+	}
+
+	return sqlDB.PingContext(ctx)
 }
 
 // GetDatabaseDSN returns the formatted database DSN for GORM

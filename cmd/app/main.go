@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"kswi-backend/internal/config"
+	"kswi-backend/internal/router"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,26 +25,20 @@ func main() {
 	// Get logger
 	logger := config.GetSugaredLogger()
 
-	gin.SetMode(gin.ReleaseMode)
-
 	// Set Gin mode based on environment
-	// if config.IsProduction() {
-	// 	gin.SetMode(gin.ReleaseMode)
-	// } else {
-	// 	gin.SetMode(gin.DebugMode)
-	// }
+	if config.IsProduction() {
+		gin.SetMode(gin.ReleaseMode)
+	} else {
+		gin.SetMode(gin.DebugMode)
+	}
 
-	// Create Gin router
-	router := gin.New()
-
-	// Add middleware
-	router.Use(gin.LoggerWithWriter(config.LogWriter()))
-	router.Use(gin.Recovery())
+	// Setup router with all routes
+	ginRouter := router.SetupRouter()
 
 	// Create HTTP server
 	server := &http.Server{
 		Addr:         config.GetServerAddress(),
-		Handler:      router,
+		Handler:      ginRouter,
 		ReadTimeout:  time.Duration(config.Get().Server.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(config.Get().Server.WriteTimeout) * time.Second,
 		IdleTimeout:  time.Duration(config.Get().Server.IdleTimeout) * time.Second,
