@@ -24,12 +24,14 @@ func main() {
 	// Get logger
 	logger := config.GetSugaredLogger()
 
+	gin.SetMode(gin.ReleaseMode)
+
 	// Set Gin mode based on environment
-	if config.IsProduction() {
-		gin.SetMode(gin.ReleaseMode)
-	} else {
-		gin.SetMode(gin.DebugMode)
-	}
+	// if config.IsProduction() {
+	// 	gin.SetMode(gin.ReleaseMode)
+	// } else {
+	// 	gin.SetMode(gin.DebugMode)
+	// }
 
 	// Create Gin router
 	router := gin.New()
@@ -37,15 +39,6 @@ func main() {
 	// Add middleware
 	router.Use(gin.LoggerWithWriter(config.LogWriter()))
 	router.Use(gin.Recovery())
-
-	// Add basic health check route
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":      "ok",
-			"application": config.GetAppInfo(),
-			"timestamp":   time.Now().UTC(),
-		})
-	})
 
 	// Create HTTP server
 	server := &http.Server{
