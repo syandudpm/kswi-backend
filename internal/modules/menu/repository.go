@@ -2,174 +2,187 @@ package menu
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
+	"kswi-backend/internal/model"
 	"sort"
-
-	"kswi-backend/internal/config"
-	"kswi-backend/internal/models"
-	"kswi-backend/internal/shared/pagination"
+	"time"
 
 	"gorm.io/gorm"
 )
 
 type Repository interface {
-	Create(ctx context.Context, user *models.User) error
-	GetByID(ctx context.Context, id uint) (*models.User, error)
-	Update(ctx context.Context, user *models.User) error
-	Delete(ctx context.Context, id uint) error
-	List(ctx context.Context, params pagination.Params) ([]models.User, *pagination.Meta, error)
-	Count(ctx context.Context) (int64, error)
-
 	GetMenuTree(ctx context.Context) ([]MenuResponse, error)
+	CreateMenu(ctx context.Context, input CreateMenuInput) error
+	UpdateMenu(ctx context.Context, id uint, input UpdateMenuInput) error
+	DeleteMenu(ctx context.Context, id uint) error
 }
 
 type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository creates a new user repository
-func NewRepository() Repository {
-	return &repository{
-		db: config.GetDB(),
-	}
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
-// Create creates a new user
-func (r *repository) Create(ctx context.Context, user *models.User) error {
-	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
-		return fmt.Errorf("failed to create user: %w", err)
-	}
-	return nil
-}
-
-// GetByID retrieves a user by ID
-func (r *repository) GetByID(ctx context.Context, id uint) (*models.User, error) {
-	var user models.User
-	err := r.db.WithContext(ctx).First(&user, id).Error
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("user not found")
-		}
-		return nil, fmt.Errorf("failed to get user: %w", err)
-	}
-	return &user, nil
-}
-
-// Update updates a user
-func (r *repository) Update(ctx context.Context, user *models.User) error {
-	if err := r.db.WithContext(ctx).Save(user).Error; err != nil {
-		return fmt.Errorf("failed to update user: %w", err)
-	}
-	return nil
-}
-
-// Delete soft deletes a user
-func (r *repository) Delete(ctx context.Context, id uint) error {
-	if err := r.db.WithContext(ctx).Delete(&models.User{}, id).Error; err != nil {
-		return fmt.Errorf("failed to delete user: %w", err)
-	}
-	return nil
-}
-
-// List retrieves users with pagination
-func (r *repository) List(ctx context.Context, params pagination.Params) ([]models.User, *pagination.Meta, error) {
-	var users []models.User
-	var total int64
-
-	// Count total records
-	if err := r.db.WithContext(ctx).Model(&models.User{}).Count(&total).Error; err != nil {
-		return nil, nil, fmt.Errorf("failed to count users: %w", err)
-	}
-
-	// Calculate pagination
-	meta := pagination.Calculate(params, total)
-
-	// Query with pagination
-	query := r.db.WithContext(ctx).
-		Offset(meta.Offset).
-		Limit(meta.Limit)
-
-	// Add sorting
-	if params.Sort != "" {
-		query = query.Order(params.Sort + " " + params.Order)
-	} else {
-		query = query.Order("created_at DESC")
-	}
-
-	if err := query.Find(&users).Error; err != nil {
-		return nil, nil, fmt.Errorf("failed to list users: %w", err)
-	}
-
-	return users, meta, nil
-}
-
-// Count returns the total number of users
-func (r *repository) Count(ctx context.Context) (int64, error) {
-	var count int64
-	if err := r.db.WithContext(ctx).Model(&models.User{}).Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("failed to count users: %w", err)
-	}
-	return count, nil
-}
-
-type menuData struct {
-	ID       uint    `gorm:"column:id"`
-	ParentID uint    `gorm:"column:parent_id"` // Nullable for root items
-	Sort     int     `gorm:"column:sort"`
-	Name     string  `gorm:"column:name"`
-	Route    *string `gorm:"column:route"`
-	Icon     *string `gorm:"column:icon"`
-}
-
+// GetMenuTree returns the active menu tree using raw SQL → DTO
 func (r *repository) GetMenuTree(ctx context.Context) ([]MenuResponse, error) {
-	// Step 1: Fetch ALL active menus in a single query
-	var allMenus []menuData
-	err := r.db.WithContext(ctx).
-		Table("golang.menus").
-		Select("id, parent_id, sort, name, route, icon").
-		Where("is_active = 1").
-		Order("sort ASC"). // Sort all items by sort
-		Find(&allMenus).Error
+	const query = `
+        SELECT id, parent_id, sort, name, route, icon, is_active, created_at
+        FROM menus
+        WHERE is_active = true AND deleted_at IS NULL
+        ORDER BY sort ASC
+    `
 
-	if err != nil {
+	var rows []struct {
+		ID        uint      `db:"id"`
+		ParentID  uint      `db:"parent_id"`
+		Sort      int       `db:"sort"`
+		Name      string    `db:"name"`
+		Route     *string   `db:"route"`
+		Icon      *string   `db:"icon"`
+		IsActive  bool      `db:"is_active"`
+		CreatedAt time.Time `db:"created_at"`
+	}
+
+	err := r.db.WithContext(ctx).Raw(query).Scan(&rows).Error
+	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
 
-	// Step 2: Build tree structure recursively starting from root (parentID = 0)
-	return r.buildMenuTree(allMenus, 0), nil
+	return buildMenuTree(rows), nil
 }
 
-func (r *repository) buildMenuTree(allMenus []menuData, parentID uint) []MenuResponse {
-	var menus []MenuResponse
+func buildMenuTree(rows []struct {
+	ID        uint
+	ParentID  uint
+	Sort      int
+	Name      string
+	Route     *string
+	Icon      *string
+	IsActive  bool
+	CreatedAt time.Time
+}) []MenuResponse {
+	idMap := make(map[uint]MenuResponse)
+	var result []MenuResponse
 
-	// Find all menus with the given parentID
-	for _, menu := range allMenus {
-		if menu.ParentID == parentID {
-
-			// RECURSIVE CALL: Build children for this menu
-			children := r.buildMenuTree(allMenus, menu.ID) // <-- HERE'S THE RECURSION!
-
-			// Ensure children is empty array instead of nil
-			// if children == nil {
-			// 	children = []MenuResponse{}
-			// }
-
-			menuResponse := MenuResponse{
-				ID:       menu.ID,
-				Sort:     menu.Sort,
-				Name:     menu.Name,
-				Route:    menu.Route,
-				Icon:     menu.Icon,
-				Children: children, // Assign the recursively built children
-			}
-			menus = append(menus, menuResponse)
+	// Initialize all nodes
+	for _, row := range rows {
+		idMap[row.ID] = MenuResponse{
+			ID:        row.ID,
+			ParentID:  row.ParentID,
+			Sort:      row.Sort,
+			Name:      row.Name,
+			Route:     row.Route,
+			Icon:      row.Icon,
+			IsActive:  row.IsActive,
+			CreatedAt: row.CreatedAt,
+			Children:  []MenuResponse{}, // never nil
 		}
 	}
 
-	// Sort menus by sort
-	sort.Slice(menus, func(i, j int) bool {
-		return menus[i].Sort < menus[j].Sort
+	// Link children to parents
+	for _, row := range rows {
+		if row.ParentID == 0 {
+			result = append(result, idMap[row.ID])
+		} else {
+			if parent, exists := idMap[row.ParentID]; exists {
+				parent.Children = append(parent.Children, idMap[row.ID])
+				idMap[row.ParentID] = parent // update parent (slice is copied)
+			}
+		}
+	}
+
+	// Sort by sort field
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Sort < result[j].Sort
 	})
 
-	return menus
+	return result
+}
+
+// CreateMenu uses GORM with full model
+func (r *repository) CreateMenu(ctx context.Context, input CreateMenuInput) error {
+	menu := model.Menu{
+		ParentID:     derefOrZero(input.ParentID, 0),
+		Code:         input.Code,
+		ParentCode:   nil, // can be set in service if needed
+		Sort:         input.Sort,
+		Name:         input.Name,
+		Route:        input.Route,
+		Icon:         input.Icon,
+		IsActive:     input.IsActive,
+		PermissionID: nil,
+	}
+
+	return r.db.WithContext(ctx).Create(&menu).Error
+}
+
+// UpdateMenu – only updates allowed fields
+func (r *repository) UpdateMenu(ctx context.Context, id uint, input UpdateMenuInput) error {
+	updates := map[string]interface{}{}
+	if input.ParentID != nil {
+		updates["parent_id"] = *input.ParentID
+	}
+	if input.Code != nil {
+		updates["code"] = input.Code
+	}
+	if input.Sort != nil {
+		updates["sort"] = *input.Sort
+	}
+	if input.Name != nil {
+		updates["name"] = *input.Name
+	}
+	if input.Route != nil {
+		updates["route"] = input.Route
+	}
+	if input.Icon != nil {
+		updates["icon"] = input.Icon
+	}
+	if input.IsActive != nil {
+		updates["is_active"] = *input.IsActive
+	}
+
+	if len(updates) == 0 {
+		return nil // nothing to update
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&model.Menu{}).
+		Where("id = ?", id).
+		Select("parent_id", "code", "sort", "name", "route", "icon", "is_active", "updated_at").
+		Updates(updates)
+
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
+}
+
+// DeleteMenu – soft delete
+func (r *repository) DeleteMenu(ctx context.Context, id uint) error {
+	result := r.db.WithContext(ctx).
+		Where("id = ?", id).
+		Delete(&model.Menu{})
+
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
+}
+
+// Helper: deref pointer or return default
+func derefOrZero[T any](ptr *T, def T) T {
+	if ptr != nil {
+		return *ptr
+	}
+	return def
 }

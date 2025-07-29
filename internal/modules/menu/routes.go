@@ -11,6 +11,14 @@ func RegisterRoutes(r *gin.RouterGroup) {
 
 	routes := r.Group("/menu")
 	{
+		// Get menu tree (hierarchical structure)
 		routes.GET("", h.MenuTree)
+		routes.GET("/tree", h.MenuTree) // Alternative endpoint for clarity
+
+		// Get all active menus (flat list)
+		routes.GET("/active", h.GetActiveMenus)
+
+		// Get specific menu by ID
+		routes.GET("/:id", h.GetMenuByID)
 	}
 }
