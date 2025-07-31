@@ -27,7 +27,6 @@ type DatabaseConfig struct {
 
 var db *gorm.DB
 
-// InitDatabase initializes the database connection with GORM
 func InitDatabase() error {
 	GetSugaredLogger().Info("🔄 Initializing database connection...")
 
