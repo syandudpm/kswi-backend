@@ -3,13 +3,12 @@ package middleware
 import (
 	"kswi-backend/internal/config"
 	"kswi-backend/internal/shared/errors"
-	"log"
 
 	"github.com/gin-gonic/gin"
 )
 
 func ErrorHandler(cfg *config.Config) gin.HandlerFunc {
-	isProduction := cfg.App.Env == "production"
+	isProduction := cfg.App.Environment == "production" // Fixed field name
 
 	return func(c *gin.Context) {
 		c.Next()
@@ -30,11 +29,12 @@ func ErrorHandler(cfg *config.Config) gin.HandlerFunc {
 				}
 			}
 
-			// Enhanced logging
+			// Enhanced logging using structured logger
+			logger := config.GetSugaredLogger()
 			if !isProduction {
-				log.Printf("[ERROR] %+v\n", lastErr) // Full error with stack trace if available
+				logger.Errorf("Request error: %+v", lastErr)
 			} else if appErr.Type == errors.TypeInternal {
-				log.Printf("[ERROR] %v\n", lastErr) // Simple log in production
+				logger.Errorf("Internal error: %v", lastErr)
 			}
 
 			// Prepare safe response

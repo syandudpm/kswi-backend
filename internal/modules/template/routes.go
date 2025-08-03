@@ -1,4 +1,4 @@
-package menu
+package template
 
 import (
 	"kswi-backend/internal/config"
@@ -11,9 +11,8 @@ func RegisterRoutes(r *gin.RouterGroup) {
 	svc := NewService(repo)
 	handler := NewHandler(svc)
 
-	menu := r.Group("/menu")
+	menuRoutes := r.Group("/template")
 	{
-		menu.GET("/tree", handler.GetMenuTree)
-		menu.GET("/:id", handler.GetMenuByID)
+		menuRoutes.GET("/tree", handler.Test)
 	}
 }

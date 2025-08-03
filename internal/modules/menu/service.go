@@ -2,13 +2,13 @@ package menu
 
 import (
 	"context"
+	"fmt"
+	"kswi-backend/internal/shared/errors"
 )
 
 type Service interface {
 	GetMenuTree(ctx context.Context) ([]MenuResponse, error)
-	CreateMenu(ctx context.Context, input CreateMenuInput) error
-	UpdateMenu(ctx context.Context, id uint, input UpdateMenuInput) error
-	DeleteMenu(ctx context.Context, id uint) error
+	GetMenuByID(ctx context.Context, id uint) (*MenuDetailResponse, error)
 }
 
 type service struct {
@@ -19,18 +19,23 @@ func NewService(repo Repository) Service {
 	return &service{repo: repo}
 }
 
+// GetMenuTree retrieves the hierarchical menu structure
 func (s *service) GetMenuTree(ctx context.Context) ([]MenuResponse, error) {
-	return s.repo.GetMenuTree(ctx)
+	menus, err := s.repo.GetMenuTree(ctx)
+	if err != nil {
+		return nil, errors.NewDatabaseError(fmt.Errorf("failed to get menu tree: %w", err))
+	}
+
+	return menus, nil
 }
 
-func (s *service) CreateMenu(ctx context.Context, input CreateMenuInput) error {
-	return s.repo.CreateMenu(ctx, input)
-}
-
-func (s *service) UpdateMenu(ctx context.Context, id uint, input UpdateMenuInput) error {
-	return s.repo.UpdateMenu(ctx, id, input)
-}
-
-func (s *service) DeleteMenu(ctx context.Context, id uint) error {
-	return s.repo.DeleteMenu(ctx, id)
+func (s *service) GetMenuByID(ctx context.Context, id uint) (*MenuDetailResponse, error) {
+	menu, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("repo error: %w", err)
+	}
+	if menu == nil {
+		return nil, nil // Not found
+	}
+	return menu, nil
 }

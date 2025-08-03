@@ -1,4 +1,4 @@
-package menu
+package oss
 
 import (
 	"kswi-backend/internal/config"
@@ -9,11 +9,11 @@ import (
 func RegisterRoutes(r *gin.RouterGroup) {
 	repo := NewRepository(config.GetDB())
 	svc := NewService(repo)
-	handler := NewHandler(svc)
+	h := NewHandler(svc)
 
-	menu := r.Group("/menu")
+	routes := r.Group("/oss")
 	{
-		menu.GET("/tree", handler.GetMenuTree)
-		menu.GET("/:id", handler.GetMenuByID)
+		routes.GET("/tree", h.Test)
+		routes.POST("/dt", h.DtDatabase)
 	}
 }

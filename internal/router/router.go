@@ -2,7 +2,9 @@ package router
 
 import (
 	"kswi-backend/internal/config"
+	"kswi-backend/internal/middleware"
 	"kswi-backend/internal/modules/menu"
+	"kswi-backend/internal/modules/oss"
 	"net/http"
 	"time"
 
@@ -20,6 +22,9 @@ func SetupRouter() *gin.Engine {
 	// CORS configuration
 	corsConfig(r)
 
+	// Add error handler middleware
+	r.Use(middleware.ErrorHandler(config.Get()))
+
 	// Common routes
 	commonRoutes(r)
 
@@ -27,6 +32,7 @@ func SetupRouter() *gin.Engine {
 	api := r.Group("/api")
 	{
 		menu.RegisterRoutes(api)
+		oss.RegisterRoutes(api)
 	}
 
 	return r
@@ -87,8 +93,8 @@ func commonRoutes(r *gin.Engine) {
 			"message": "KSWI Backend API",
 			"version": "v1",
 			"endpoints": gin.H{
-				"health": "/health",
-				"menu":   "/api/menu",
+				"health":    "/health",
+				"menu_tree": "/api/menu/tree",
 			},
 		})
 	})

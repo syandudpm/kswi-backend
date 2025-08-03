@@ -1,11 +1,11 @@
 package menu
 
 import (
-	"fmt"
+	"kswi-backend/internal/shared/api"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type Handler struct {
@@ -18,103 +18,48 @@ func NewHandler(service Service) *Handler {
 
 // GetMenuTree godoc
 // @Summary Get active menu tree
+// @Description Retrieves hierarchical menu structure with active menus only
 // @Tags menu
 // @Produce json
-// @Success 200 {array} MenuResponse
-// @Router /menu/tree [get]
+// @Success 200 {object} api.APIResponse{data=[]MenuResponse}
+// @Failure 500 {object} api.APIResponse
+// @Router /api/menu/tree [get]
 func (h *Handler) GetMenuTree(c *gin.Context) {
-	tree, err := h.GetMenuTree(c.Request.Context())
+	ctx := c.Request.Context()
+
+	menus, err := h.service.GetMenuTree(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load menu"})
+		// Error will be handled by error middleware
+		_ = c.Error(err)
 		return
 	}
-	c.JSON(http.StatusOK, tree)
+
+	response := api.APIResponse{
+		Success: true,
+		Message: "Menu tree retrieved successfully",
+		Data:    menus,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
-// CreateMenu godoc
-// @Summary Create a new menu
-// @Tags menu
-// @Accept json
-// @Produce json
-// @Param input body CreateMenuInput true "Menu data"
-// @Success 201
-// @Router /menu [post]
-func (h *Handler) CreateMenu(c *gin.Context) {
-	var input CreateMenuInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	err := h.CreateMenu(c.Request.Context(), input)
+func (h *Handler) GetMenuByID(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create menu"})
+		c.JSON(400, gin.H{"error": "invalid id"})
 		return
 	}
 
-	c.Status(http.StatusCreated)
-}
-
-// UpdateMenu godoc
-// @Summary Update a menu
-// @Tags menu
-// @Accept json
-// @Produce json
-// @Param id path uint true "Menu ID"
-// @Param input body UpdateMenuInput true "Update data"
-// @Success 204
-// @Router /menu/{id} [patch]
-func (h *Handler) UpdateMenu(c *gin.Context) {
-	var input UpdateMenuInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	id := c.Param("id")
-	var menuID uint
-	_, err := fmt.Sscanf(id, "%d", &menuID)
-	if err != nil || menuID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid menu ID"})
-		return
-	}
-
-	err = h.UpdateMenu(c.Request.Context(), menuID, input)
+	ctx := c.Request.Context()
+	menu, err := h.service.GetMenuByID(ctx, uint(id))
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Menu not found"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update menu"})
-		}
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	if menu == nil {
+		c.JSON(404, gin.H{"error": "menu not found"})
 		return
 	}
 
-	c.Status(http.StatusNoContent)
-}
-
-// DeleteMenu godoc
-// @Summary Delete a menu (soft delete)
-// @Tags menu
-// @Success 204
-// @Router /menu/{id} [delete]
-func (h *Handler) DeleteMenu(c *gin.Context) {
-	id := c.Param("id")
-	var menuID uint
-	_, err := fmt.Sscanf(id, "%d", &menuID)
-	if err != nil || menuID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid menu ID"})
-		return
-	}
-
-	err = h.DeleteMenu(c.Request.Context(), menuID)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Menu not found"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete menu"})
-		}
-		return
-	}
-
-	c.Status(http.StatusNoContent)
+	c.JSON(200, menu)
 }
