@@ -8,7 +8,7 @@ import (
 )
 
 func ErrorHandler(cfg *config.Config) gin.HandlerFunc {
-	isProduction := cfg.App.Environment == "production" // Fixed field name
+	isProduction := cfg.App.Environment == "production"
 
 	return func(c *gin.Context) {
 		c.Next()
