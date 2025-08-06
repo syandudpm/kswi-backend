@@ -3,6 +3,7 @@ package middleware
 import (
 	"kswi-backend/internal/config"
 	"kswi-backend/internal/shared/errors"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,10 +32,61 @@ func ErrorHandler(cfg *config.Config) gin.HandlerFunc {
 
 			// Enhanced logging using structured logger
 			logger := config.GetSugaredLogger()
+
+			// Prepare base log fields
+			logFields := []interface{}{
+				"error_type", appErr.Type,
+				"error_message", appErr.Message,
+				"request_method", c.Request.Method,
+				"request_path", c.Request.URL.Path,
+				"request_ip", c.ClientIP(),
+				"status_code", appErr.GetStatusCode(),
+				"timestamp", time.Now().Format(time.RFC3339),
+			}
+
 			if !isProduction {
-				logger.Errorf("Request error: %+v", lastErr)
-			} else if appErr.Type == errors.TypeInternal {
-				logger.Errorf("Internal error: %v", lastErr)
+				// Development: Log everything with full details
+				detailedFields := append(logFields,
+					"error_details", appErr.Details,
+					"original_error", func() string {
+						if appErr.GetOriginalError() != nil {
+							return appErr.GetOriginalError().Error()
+						}
+						return lastErr.Error()
+					}(),
+					"request_headers", c.Request.Header,
+					"user_agent", c.Request.UserAgent(),
+				)
+
+				// Add query params if present
+				if len(c.Request.URL.RawQuery) > 0 {
+					detailedFields = append(detailedFields, "query_params", c.Request.URL.RawQuery)
+				}
+
+				logger.Errorw("Request error occurred", detailedFields...)
+
+				// Additional detailed log for database errors in development
+				if appErr.Type == errors.TypeDatabase {
+					logger.Errorw("Database error details",
+						"full_error_context", appErr.GetFullDetails(),
+						"gin_error_stack", c.Errors.String(),
+					)
+				}
+
+			} else if errors.ShouldLogFullDetails(appErr.Type) {
+				// Production: Log internal/database errors with essential details
+				productionFields := append(logFields,
+					"original_error", func() string {
+						if appErr.GetOriginalError() != nil {
+							return appErr.GetOriginalError().Error()
+						}
+						return lastErr.Error()
+					}(),
+				)
+				logger.Errorw("Internal error occurred", productionFields...)
+			} else {
+				// Production: Log other errors with minimal details
+				logger.Errorw("Request error occurred", logFields...)
 			}
 
 			// Prepare safe response

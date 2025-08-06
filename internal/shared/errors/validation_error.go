@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"kswi-backend/internal/shared/utils"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -31,26 +32,24 @@ func HandleValidationError(err error) *AppError {
 
 	// Check for empty body
 	if err.Error() == "EOF" {
-		return NewAppError(
-			TypeValidation,
-			"Validation failed",
+		return NewValidationErrorWithOriginal(
 			[]ValidationError{{
 				Field:   "body",
 				Message: "Request body is empty. Please provide valid JSON data",
 			}},
+			err,
 		)
 	}
 
 	// Check for JSON syntax errors
 	var syntaxError *json.SyntaxError
 	if errors.As(err, &syntaxError) {
-		return NewAppError(
-			TypeValidation,
-			"Validation failed",
+		return NewValidationErrorWithOriginal(
 			[]ValidationError{{
 				Field:   "body",
-				Message: "Invalid JSON format. Please check your request body",
+				Message: fmt.Sprintf("Invalid JSON format at position %d: %s", syntaxError.Offset, err.Error()),
 			}},
+			err,
 		)
 	}
 
@@ -59,11 +58,11 @@ func HandleValidationError(err error) *AppError {
 	if ok {
 		// Process each validation error
 		for _, e := range validatorErrs {
-			field := strings.ToLower(e.Field())
+			field := utils.ToSnakeCase(e.Field())
 			message := validationMessages[e.Tag()]
 
 			if message == "" {
-				message = "Invalid value"
+				message = fmt.Sprintf("Invalid value (tag: %s)", e.Tag())
 			}
 
 			// Handle parameters for certain validation tags
@@ -82,10 +81,11 @@ func HandleValidationError(err error) *AppError {
 		var unmarshalTypeError *json.UnmarshalTypeError
 		if errors.As(err, &unmarshalTypeError) {
 			validationErrors = append(validationErrors, ValidationError{
-				Field: unmarshalTypeError.Field,
-				Message: fmt.Sprintf("Invalid type for field '%s': expected %v",
+				Field: utils.ToSnakeCase(unmarshalTypeError.Field),
+				Message: fmt.Sprintf("Invalid type for field '%s': expected %v, got %s",
 					unmarshalTypeError.Field,
-					unmarshalTypeError.Type),
+					unmarshalTypeError.Type,
+					unmarshalTypeError.Value),
 			})
 		} else {
 			// Fallback for other errors
@@ -96,9 +96,8 @@ func HandleValidationError(err error) *AppError {
 		}
 	}
 
-	return NewAppError(
-		TypeValidation,
-		"Validation failed",
+	return NewValidationErrorWithOriginal(
 		validationErrors,
+		err,
 	)
 }

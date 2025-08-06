@@ -16,9 +16,11 @@ const (
 )
 
 type AppError struct {
-	Type    ErrorType   `json:"type"`
-	Message string      `json:"message"`
-	Details interface{} `json:"details,omitempty"`
+	Type        ErrorType   `json:"type"`
+	Message     string      `json:"message"`
+	Details     interface{} `json:"details,omitempty"`
+	OriginalErr error       `json:"-"` // Store original error for logging, exclude from JSON
+	StackTrace  string      `json:"-"` // Optional stack trace for debugging
 }
 
 type Response struct {
@@ -31,12 +33,49 @@ func (e *AppError) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Type, e.Message)
 }
 
+// GetOriginalError returns the original underlying error for logging purposes
+func (e *AppError) GetOriginalError() error {
+	return e.OriginalErr
+}
+
+// GetFullDetails returns a map with all error details for structured logging
+func (e *AppError) GetFullDetails() map[string]interface{} {
+	details := map[string]interface{}{
+		"type":    e.Type,
+		"message": e.Message,
+	}
+
+	if e.Details != nil {
+		details["details"] = e.Details
+	}
+
+	if e.OriginalErr != nil {
+		details["original_error"] = e.OriginalErr.Error()
+	}
+
+	if e.StackTrace != "" {
+		details["stack_trace"] = e.StackTrace
+	}
+
+	return details
+}
+
 // NewAppError creates a new structured application error
 func NewAppError(errorType ErrorType, message string, details interface{}) *AppError {
 	return &AppError{
 		Type:    errorType,
 		Message: message,
 		Details: details,
+	}
+}
+
+// NewAppErrorWithOriginal creates a new structured application error with original error preserved
+func NewAppErrorWithOriginal(errorType ErrorType, message string, details interface{}, originalErr error) *AppError {
+	return &AppError{
+		Type:        errorType,
+		Message:     message,
+		Details:     details,
+		OriginalErr: originalErr,
 	}
 }
 
@@ -56,9 +95,13 @@ func (e *AppError) GetStatusCode() int {
 	}
 }
 
-// Convenience constructors
+// Convenience constructors - Enhanced versions
 func NewValidationError(details interface{}) *AppError {
 	return NewAppError(TypeValidation, "Validation failed", details)
+}
+
+func NewValidationErrorWithOriginal(details interface{}, originalErr error) *AppError {
+	return NewAppErrorWithOriginal(TypeValidation, "Validation failed", details, originalErr)
 }
 
 func NewNotFoundError(resource string) *AppError {
@@ -66,13 +109,14 @@ func NewNotFoundError(resource string) *AppError {
 }
 
 func NewDatabaseError(err error) *AppError {
-	return NewAppError(TypeDatabase, "Database operation failed", err.Error())
+	return NewAppErrorWithOriginal(TypeDatabase, "Database operation failed", err.Error(), err)
 }
 
 func NewInternalError(err error) *AppError {
-	return NewAppError(TypeInternal, "Internal error", err.Error())
+	return NewAppErrorWithOriginal(TypeInternal, "Internal error", err.Error(), err)
 }
 
+// Enhanced As function with better error checking
 func As(err error, target interface{}) bool {
 	if e, ok := err.(*AppError); ok {
 		if t, ok := target.(**AppError); ok {
@@ -86,6 +130,16 @@ func As(err error, target interface{}) bool {
 func ShouldHideDetails(errorType ErrorType) bool {
 	switch errorType {
 	case TypeInternal, TypeDatabase, TypeAuth:
+		return true
+	default:
+		return false
+	}
+}
+
+// Helper function to check if error should be logged with full details
+func ShouldLogFullDetails(errorType ErrorType) bool {
+	switch errorType {
+	case TypeInternal, TypeDatabase:
 		return true
 	default:
 		return false
