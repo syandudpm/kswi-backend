@@ -2,6 +2,7 @@ app:
   name: "KSWI Backend"
   version: "1.0.0"
   environment: "development"
+  # environment: "production"
   debug: true
 
 server:

@@ -5,6 +5,7 @@ import (
 	"kswi-backend/internal/middleware"
 	"kswi-backend/internal/modules/menu"
 	"kswi-backend/internal/modules/oss"
+	"kswi-backend/internal/modules/people"
 	"kswi-backend/internal/modules/person"
 	"kswi-backend/internal/modules/user"
 	"net/http"
@@ -37,6 +38,7 @@ func SetupRouter() *gin.Engine {
 		oss.RegisterRoutes(api)
 		user.RegisterRoutes(api)
 		person.RegisterRoutes(api)
+		people.RegisterRoutes(api)
 	}
 
 	return r
