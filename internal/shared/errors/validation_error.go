@@ -32,24 +32,28 @@ func HandleValidationError(err error) *AppError {
 
 	// Check for empty body
 	if err.Error() == "EOF" {
-		return NewValidationErrorWithOriginal(
+		return NewAppErrorWithOriginal(
+			TypeValidation,
+			"Validation failed",
 			[]ValidationError{{
 				Field:   "body",
 				Message: "Request body is empty. Please provide valid JSON data",
 			}},
-			err,
+			err, // <-- This is the only change: preserve original error
 		)
 	}
 
 	// Check for JSON syntax errors
 	var syntaxError *json.SyntaxError
 	if errors.As(err, &syntaxError) {
-		return NewValidationErrorWithOriginal(
+		return NewAppErrorWithOriginal(
+			TypeValidation,
+			"Validation failed",
 			[]ValidationError{{
 				Field:   "body",
-				Message: fmt.Sprintf("Invalid JSON format at position %d: %s", syntaxError.Offset, err.Error()),
+				Message: "Invalid JSON format. Please check your request body",
 			}},
-			err,
+			err, // <-- Preserve original error
 		)
 	}
 
@@ -62,7 +66,7 @@ func HandleValidationError(err error) *AppError {
 			message := validationMessages[e.Tag()]
 
 			if message == "" {
-				message = fmt.Sprintf("Invalid value (tag: %s)", e.Tag())
+				message = "Invalid value"
 			}
 
 			// Handle parameters for certain validation tags
@@ -81,11 +85,10 @@ func HandleValidationError(err error) *AppError {
 		var unmarshalTypeError *json.UnmarshalTypeError
 		if errors.As(err, &unmarshalTypeError) {
 			validationErrors = append(validationErrors, ValidationError{
-				Field: utils.ToSnakeCase(unmarshalTypeError.Field),
-				Message: fmt.Sprintf("Invalid type for field '%s': expected %v, got %s",
+				Field: unmarshalTypeError.Field,
+				Message: fmt.Sprintf("Invalid type for field '%s': expected %v",
 					unmarshalTypeError.Field,
-					unmarshalTypeError.Type,
-					unmarshalTypeError.Value),
+					unmarshalTypeError.Type),
 			})
 		} else {
 			// Fallback for other errors
@@ -96,8 +99,10 @@ func HandleValidationError(err error) *AppError {
 		}
 	}
 
-	return NewValidationErrorWithOriginal(
+	return NewAppErrorWithOriginal(
+		TypeValidation,
+		"Validation failed",
 		validationErrors,
-		err,
+		err, // <-- Preserve original error
 	)
 }

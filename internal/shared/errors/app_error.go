@@ -20,7 +20,6 @@ type AppError struct {
 	Message     string      `json:"message"`
 	Details     interface{} `json:"details,omitempty"`
 	OriginalErr error       `json:"-"` // Store original error for logging, exclude from JSON
-	StackTrace  string      `json:"-"` // Optional stack trace for debugging
 }
 
 type Response struct {
@@ -36,28 +35,6 @@ func (e *AppError) Error() string {
 // GetOriginalError returns the original underlying error for logging purposes
 func (e *AppError) GetOriginalError() error {
 	return e.OriginalErr
-}
-
-// GetFullDetails returns a map with all error details for structured logging
-func (e *AppError) GetFullDetails() map[string]interface{} {
-	details := map[string]interface{}{
-		"type":    e.Type,
-		"message": e.Message,
-	}
-
-	if e.Details != nil {
-		details["details"] = e.Details
-	}
-
-	if e.OriginalErr != nil {
-		details["original_error"] = e.OriginalErr.Error()
-	}
-
-	if e.StackTrace != "" {
-		details["stack_trace"] = e.StackTrace
-	}
-
-	return details
 }
 
 // NewAppError creates a new structured application error
@@ -95,7 +72,7 @@ func (e *AppError) GetStatusCode() int {
 	}
 }
 
-// Convenience constructors - Enhanced versions
+// Convenience constructors
 func NewValidationError(details interface{}) *AppError {
 	return NewAppError(TypeValidation, "Validation failed", details)
 }
@@ -116,7 +93,6 @@ func NewInternalError(err error) *AppError {
 	return NewAppErrorWithOriginal(TypeInternal, "Internal error", err.Error(), err)
 }
 
-// Enhanced As function with better error checking
 func As(err error, target interface{}) bool {
 	if e, ok := err.(*AppError); ok {
 		if t, ok := target.(**AppError); ok {
@@ -130,16 +106,6 @@ func As(err error, target interface{}) bool {
 func ShouldHideDetails(errorType ErrorType) bool {
 	switch errorType {
 	case TypeInternal, TypeDatabase, TypeAuth:
-		return true
-	default:
-		return false
-	}
-}
-
-// Helper function to check if error should be logged with full details
-func ShouldLogFullDetails(errorType ErrorType) bool {
-	switch errorType {
-	case TypeInternal, TypeDatabase:
 		return true
 	default:
 		return false
